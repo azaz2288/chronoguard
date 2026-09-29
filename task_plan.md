@@ -6,8 +6,8 @@ Turn Chronoguard from a useful small CLI into a reproducible, leakage-resistant 
 ## Milestones
 1. Existing foundation: point-in-time join, purged walk-forward plans and independent join audit — complete.
 2. Reproducible experiment runner: explicit sample/target data contract, train-only transforms, baseline model, per-fold predictions and metrics, input fingerprints — complete for the initial baseline; immutable-input enforcement remains future work.
-3. Stronger statistical evaluation: uncertainty intervals, multiple baseline comparisons, failure-mode fixtures and larger synthetic benchmarks — pending.
-4. Artifact audit: independently verify predictions, fold membership, hashes, preprocessing state and reported metrics — implementation complete; 21 local tests including 40 randomized small experiments pass, CI/release verification pending.
+3. Stronger statistical evaluation: uncertainty intervals, multiple baseline comparisons, failure-mode fixtures and larger synthetic benchmarks — in progress; paired block-bootstrap comparison implemented, more robust comparison evidence still pending.
+4. Artifact audit: independently verify predictions, fold membership, hashes, preprocessing state and reported metrics — complete; 21 local tests including 40 randomized small experiments and cross-platform CI passed at `583ec1979010c3c50359ae14873fc71bf008183b`.
 5. Packaging and demonstration: installable package, realistic public dataset/example, performance characterization, cross-platform CI and release notes — pending.
 
 ## Quality bar

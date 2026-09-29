@@ -10,6 +10,7 @@ from typing import Any
 
 from .common import InputError, read_csv
 from .split import Event, audit_plan
+from .statistics import loss_comparison
 
 
 @dataclass(frozen=True)
@@ -123,7 +124,7 @@ def _metrics(rows: list[dict[str, Any]]) -> dict[str, float | int | None]:
 
 
 def evaluate(events: list[Event], plan: dict[str, Any], observations: dict[str, Observation], features: list[str], alpha: float,
-             source_hashes: dict[str, str]) -> dict[str, Any]:
+             source_hashes: dict[str, str], bootstrap_reps: int = 1000, block_size: int = 1, seed: int = 0) -> dict[str, Any]:
     if not math.isfinite(alpha) or alpha <= 0:
         raise InputError("alpha must be positive and finite")
     issues = audit_plan(events, plan)
@@ -134,6 +135,9 @@ def evaluate(events: list[Event], plan: dict[str, Any], observations: dict[str, 
         missing = sorted(event_ids - set(observations))
         extra = sorted(set(observations) - event_ids)
         raise InputError(f"Observation IDs do not match events; missing={missing[:5]}, extra={extra[:5]}")
+    held_out_count = sum(len(fold["test_ids"]) for fold in plan["folds"])
+    if block_size > held_out_count:
+        raise InputError("block-size cannot exceed the number of held-out predictions")
     folds = []
     all_predictions = []
     for fold in plan["folds"]:
@@ -154,7 +158,8 @@ def evaluate(events: list[Event], plan: dict[str, Any], observations: dict[str, 
         folds.append({"fold": fold["fold"], "train_count": len(train), "purged_count": len(fold["purged_ids"]),
                       "test_start": fold["test_start"], "model": model, "metrics": metrics,
                       "baseline_metrics": baseline_metrics, "predictions": predictions})
-    return {"version": 1, "method": "train-only-imputed-standardized-ridge", "features": features,
+    return {"version": 2, "method": "train-only-imputed-standardized-ridge", "features": features,
             "source_sha256": source_hashes, "folds": folds, "overall": _metrics(all_predictions),
             "overall_baseline": _metrics([{"target": row["target"], "prediction": row["train_mean_baseline"]}
-                                          for row in all_predictions])}
+                                          for row in all_predictions]),
+            "loss_comparison": loss_comparison(all_predictions, bootstrap_reps, block_size, seed)}

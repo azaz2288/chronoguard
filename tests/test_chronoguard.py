@@ -171,6 +171,10 @@ class EvaluationTests(unittest.TestCase):
         self.assertTrue(any("Overall metrics.rmse mismatch" in item for item in audit_evaluation(events, plan, observations, changed, hashes)))
 
         changed = copy.deepcopy(report)
+        changed["loss_comparison"]["mean_loss_delta"] += 1
+        self.assertTrue(any("loss_comparison.mean_loss_delta mismatch" in item for item in audit_evaluation(events, plan, observations, changed, hashes)))
+
+        changed = copy.deepcopy(report)
         changed["folds"][1]["model"]["alpha"] += 1
         self.assertTrue(any("alpha differs" in item for item in audit_evaluation(events, plan, observations, changed, hashes)))
 

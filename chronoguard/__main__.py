@@ -49,6 +49,9 @@ def main(argv: list[str] | None = None) -> int:
     experiment.add_argument("output", type=Path)
     experiment.add_argument("--feature", action="append", required=True, help="numeric feature column; repeat for multiple features")
     experiment.add_argument("--alpha", type=float, default=1.0, help="positive ridge regularization strength")
+    experiment.add_argument("--bootstrap-reps", type=int, default=1000, help="paired bootstrap resamples (100-10000)")
+    experiment.add_argument("--block-size", type=int, default=1, help="consecutive held-out predictions per circular bootstrap block")
+    experiment.add_argument("--seed", type=int, default=0, help="bootstrap random seed")
     experiment.add_argument("--force", action="store_true")
 
     audit_experiment = commands.add_parser("audit-evaluation", help="independently audit a saved evaluation report")
@@ -92,7 +95,8 @@ def main(argv: list[str] | None = None) -> int:
             result = evaluate(load_events(args.events), read_json(args.plan),
                               load_observations(args.observations, args.feature), args.feature, args.alpha,
                               {"events": sha256_file(args.events), "plan": sha256_file(args.plan),
-                               "observations": sha256_file(args.observations)})
+                               "observations": sha256_file(args.observations)},
+                              args.bootstrap_reps, args.block_size, args.seed)
             write_json(args.output, result)
             print(f"Wrote {len(result['folds'])} audited folds and {result['overall']['count']} out-of-sample predictions")
         else:

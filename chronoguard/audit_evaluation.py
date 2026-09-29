@@ -13,6 +13,7 @@ from typing import Any
 from .common import InputError
 from .evaluate import Observation
 from .split import Event, audit_plan
+from .statistics import loss_comparison
 
 
 def _number(value: Any, label: str) -> float:
@@ -63,7 +64,7 @@ def audit_evaluation(events: list[Event], plan: Any, observations: dict[str, Obs
     plan_issues = audit_plan(events, plan)
     if plan_issues:
         raise InputError("Split plan failed audit: " + "; ".join(plan_issues[:5]))
-    if not isinstance(report, dict) or report.get("version") != 1 or report.get("method") != "train-only-imputed-standardized-ridge":
+    if not isinstance(report, dict) or report.get("version") != 2 or report.get("method") != "train-only-imputed-standardized-ridge":
         raise InputError("Unsupported evaluation report format")
     features = report.get("features")
     if not isinstance(features, list) or not features or any(not isinstance(name, str) or not name for name in features) or len(set(features)) != len(features):
@@ -158,4 +159,24 @@ def audit_evaluation(events: list[Event], plan: Any, observations: dict[str, Obs
         all_baseline_rows.extend(fold_baseline_rows)
     _check_metrics(report.get("overall"), all_model_rows, "Overall metrics", issues)
     _check_metrics(report.get("overall_baseline"), all_baseline_rows, "Overall baseline_metrics", issues)
+    comparison = report.get("loss_comparison")
+    if not isinstance(comparison, dict):
+        raise InputError("Report loss_comparison must be an object")
+    repetitions = comparison.get("repetitions")
+    block_size = comparison.get("block_size")
+    seed = comparison.get("seed")
+    combined = [{"target": target, "prediction": model, "train_mean_baseline": baseline}
+                for (target, model), (_, baseline) in zip(all_model_rows, all_baseline_rows)]
+    expected_comparison = loss_comparison(combined, repetitions, block_size, seed)
+    for field, expected in expected_comparison.items():
+        actual = comparison.get(field)
+        if field == "mean_loss_delta":
+            if not _close(_number(actual, f"loss_comparison.{field}"), expected):
+                issues.append(f"loss_comparison.{field} mismatch")
+        elif field == "interval_95" and expected is not None:
+            values = _vector(actual, 2, "loss_comparison.interval_95")
+            if any(not _close(item, target) for item, target in zip(values, expected)):
+                issues.append("loss_comparison.interval_95 mismatch")
+        elif actual != expected:
+            issues.append(f"loss_comparison.{field} mismatch")
     return issues

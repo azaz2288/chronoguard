@@ -36,6 +36,17 @@ class EvaluationProperties(unittest.TestCase):
                 self.assertTrue(any("target mismatch" in issue for issue in
                                     audit_evaluation(events, plan, observations, changed, report["source_sha256"])))
 
+    def test_bootstrap_interval_is_audited_on_larger_experiment(self):
+        origin = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        events = [Event(f"s{index}", origin + timedelta(days=index), origin + timedelta(days=index)) for index in range(20)]
+        observations = {f"s{index}": Observation(f"s{index}", float(index + index % 3), (float(index),)) for index in range(20)}
+        plan = make_plan(events, folds=2, min_train_times=10, test_times=5, gap_hours=0)
+        report = evaluate(events, plan, observations, ["signal"], 1.0, {}, bootstrap_reps=100, block_size=3, seed=7)
+        self.assertIsNotNone(report["loss_comparison"]["interval_95"])
+        self.assertEqual(audit_evaluation(events, plan, observations, report, {}), [])
+        report["loss_comparison"]["interval_95"][0] += 1
+        self.assertIn("loss_comparison.interval_95 mismatch", audit_evaluation(events, plan, observations, report, {}))
+
 
 if __name__ == "__main__":
     unittest.main()
