@@ -1,4 +1,5 @@
 import csv
+import copy
 import json
 import subprocess
 import sys
@@ -8,6 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from chronoguard.common import InputError, read_csv
+from chronoguard.audit_evaluation import audit_evaluation
 from chronoguard.evaluate import Observation, evaluate, load_observations
 from chronoguard.join import Fact, Sample, audit_join, point_in_time_join
 from chronoguard.split import Event, audit_plan, make_plan
@@ -146,6 +148,42 @@ class EvaluationTests(unittest.TestCase):
             with self.assertRaisesRegex(InputError, "non-finite"):
                 load_observations(path, ["signal"])
 
+    def test_independent_report_audit_finds_tampering(self):
+        events, plan, observations = self.fixture()
+        hashes = {"events": "a" * 64, "plan": "b" * 64, "observations": "c" * 64}
+        report = evaluate(events, plan, observations, ["signal"], 0.1, hashes)
+        self.assertEqual(audit_evaluation(events, plan, observations, report, hashes), [])
+
+        changed = copy.deepcopy(report)
+        changed["folds"][0]["predictions"][0]["prediction"] += 1
+        self.assertTrue(any("prediction mismatch" in item for item in audit_evaluation(events, plan, observations, changed, hashes)))
+
+        changed = copy.deepcopy(report)
+        changed["folds"][0]["model"]["impute_means"][0] += 1
+        self.assertTrue(any("imputation mean mismatch" in item for item in audit_evaluation(events, plan, observations, changed, hashes)))
+
+        changed = copy.deepcopy(report)
+        changed["folds"][0]["model"]["coefficients"][0] += 1
+        self.assertTrue(any("normal equation" in item for item in audit_evaluation(events, plan, observations, changed, hashes)))
+
+        changed = copy.deepcopy(report)
+        changed["overall"]["rmse"] += 1
+        self.assertTrue(any("Overall metrics.rmse mismatch" in item for item in audit_evaluation(events, plan, observations, changed, hashes)))
+
+        changed = copy.deepcopy(report)
+        changed["folds"][1]["model"]["alpha"] += 1
+        self.assertTrue(any("alpha differs" in item for item in audit_evaluation(events, plan, observations, changed, hashes)))
+
+        self.assertIn("Source SHA-256 fingerprints do not match current inputs",
+                      audit_evaluation(events, plan, observations, report, {**hashes, "events": "changed"}))
+
+    def test_report_audit_rejects_malformed_values(self):
+        events, plan, observations = self.fixture()
+        report = evaluate(events, plan, observations, ["signal"], 1.0, {})
+        report["folds"][0]["model"]["alpha"] = float("nan")
+        with self.assertRaisesRegex(InputError, "finite number"):
+            audit_evaluation(events, plan, observations, report, {})
+
 
 class CliTests(unittest.TestCase):
     def run_cli(self, *args: str) -> subprocess.CompletedProcess[str]:
@@ -219,6 +257,10 @@ class CliTests(unittest.TestCase):
             saved = json.loads(report.read_text(encoding="utf-8"))
             self.assertEqual(saved["overall"]["count"], 2)
             self.assertEqual(len(saved["source_sha256"]["observations"]), 64)
+            self.assertEqual(self.run_cli("audit-evaluation", str(events), str(plan), str(observations), str(report)).returncode, 0)
+            saved["folds"][0]["predictions"][0]["prediction"] += 10
+            report.write_text(json.dumps(saved), encoding="utf-8")
+            self.assertEqual(self.run_cli("audit-evaluation", str(events), str(plan), str(observations), str(report)).returncode, 1)
             self.assertEqual(self.run_cli("evaluate", str(events), str(plan), str(observations), str(report), "--feature", "signal").returncode, 2)
 
 

@@ -6,6 +6,7 @@ import argparse
 import sys
 from pathlib import Path
 
+from .audit_evaluation import audit_evaluation
 from .common import InputError, check_output, read_json, write_csv, write_json
 from .evaluate import evaluate, load_observations, sha256_file
 from .join import OUTPUT_FIELDS, audit_join, load_facts, load_samples, point_in_time_join
@@ -50,6 +51,12 @@ def main(argv: list[str] | None = None) -> int:
     experiment.add_argument("--alpha", type=float, default=1.0, help="positive ridge regularization strength")
     experiment.add_argument("--force", action="store_true")
 
+    audit_experiment = commands.add_parser("audit-evaluation", help="independently audit a saved evaluation report")
+    audit_experiment.add_argument("events", type=Path)
+    audit_experiment.add_argument("plan", type=Path)
+    audit_experiment.add_argument("observations", type=Path)
+    audit_experiment.add_argument("report", type=Path)
+
     args = parser.parse_args(argv)
     try:
         if args.command == "join":
@@ -80,7 +87,7 @@ def main(argv: list[str] | None = None) -> int:
             if violations:
                 return 1
             print("OK: no train/test label leakage found")
-        else:
+        elif args.command == "evaluate":
             check_output(args.output, (args.events, args.plan, args.observations), args.force)
             result = evaluate(load_events(args.events), read_json(args.plan),
                               load_observations(args.observations, args.feature), args.feature, args.alpha,
@@ -88,6 +95,22 @@ def main(argv: list[str] | None = None) -> int:
                                "observations": sha256_file(args.observations)})
             write_json(args.output, result)
             print(f"Wrote {len(result['folds'])} audited folds and {result['overall']['count']} out-of-sample predictions")
+        else:
+            report = read_json(args.report)
+            if not isinstance(report, dict) or not isinstance(report.get("features"), list) or not report["features"]:
+                raise InputError("Report must list feature columns")
+            features = report["features"]
+            if any(not isinstance(name, str) for name in features):
+                raise InputError("Report feature names must be strings")
+            issues = audit_evaluation(load_events(args.events), read_json(args.plan),
+                                      load_observations(args.observations, features), report,
+                                      {"events": sha256_file(args.events), "plan": sha256_file(args.plan),
+                                       "observations": sha256_file(args.observations)})
+            for issue in issues:
+                print(issue)
+            if issues:
+                return 1
+            print("OK: evaluation report matches source data, plan, model and metrics")
         return 0
     except InputError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)

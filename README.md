@@ -14,6 +14,7 @@ python -m chronoguard audit-join examples/samples.csv examples/facts.csv fresh.c
 python -m chronoguard split examples/events.csv plan.json --folds 2 --min-train-times 3 --test-times 1
 python -m chronoguard audit examples/events.csv plan.json
 python -m chronoguard evaluate examples/events.csv plan.json examples/observations.csv report.json --feature signal
+python -m chronoguard audit-evaluation examples/events.csv plan.json examples/observations.csv report.json
 python -m unittest discover -s tests -v
 ```
 
@@ -23,6 +24,8 @@ python -m unittest discover -s tests -v
 
 `evaluate` first audits that plan, then fits a standard-library ridge-regression model separately on each fold. Its input CSV has `sample_id`, numeric `target`, and one or more numeric `--feature` columns; a blank feature is imputed with that fold's training mean. Means and scales are fitted only on training rows, never on the test rows. The JSON report contains each fold's model state, out-of-sample predictions, MAE/RMSE/R² (null R² for a constant test target), a training-target-mean baseline for comparison, overall metrics, and SHA-256 fingerprints of the three inputs. `--alpha` sets positive ridge regularization (default 1).
 
+`audit-evaluation` independently checks the saved report against those three input files. It re-audits fold membership, checks input hashes, recomputes training-only preprocessing statistics, verifies the saved ridge coefficients satisfy the regularized normal equations, and checks every test prediction and reported metric. It does not call the evaluation runner's fitting or metric functions. Exit status is 0 for a matching report, 1 for content violations, or 2 for malformed inputs.
+
 Timestamps must be ISO 8601 with an explicit UTC offset, including `Z`. All output times are normalized to UTC. Commands return 0 on success, 1 when an audit finds violations, and 2 for invalid data or I/O errors. Existing output files are protected unless `--force` is provided. Output is written atomically.
 
 ## Limits and next steps
@@ -30,6 +33,7 @@ Timestamps must be ISO 8601 with an explicit UTC offset, including `Z`. All outp
 - `evaluate` performs its own imputation and normalization on training folds only, but it cannot detect leakage already baked into the provided feature CSV. Audit point-in-time joins upstream and avoid full-dataset feature fitting.
 - `audit` detects known leakage conditions, but cannot prove that an input's `available_at` or `end_at` accurately reflects the real data pipeline.
 - The ridge baseline is a reference implementation, not a trading recommendation or a claim of predictive advantage. Its normal-equation solver is intended for modest feature counts, not ill-conditioned wide datasets.
-- Future work: multiple feature streams, independent experiment-report auditing, uncertainty intervals, richer public benchmark datasets, and memory-bounded joins for large datasets. The independent join audit uses a direct scan and is intentionally slower than the indexed join on large inputs.
+- The report audit verifies internal consistency, not that the input CSV itself was honestly collected, nor that another model with the same metrics would generalize. It also cannot prove original source files were immutable while evaluation ran.
+- Future work: multiple feature streams, uncertainty intervals, richer public benchmark datasets, and memory-bounded joins for large datasets. The independent join audit uses a direct scan and is intentionally slower than the indexed join on large inputs.
 
 This is a newly created portfolio project with genuine Git history. It is not a pre-existing repository eligible for the Feishu collection criteria supplied with this task.
