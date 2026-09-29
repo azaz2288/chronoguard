@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "chronoguard"
+version = "0.2.0"
+description = "Auditable point-in-time joins and leakage-resistant walk-forward evaluation"
+readme = "README.md"
+requires-python = ">=3.12"
+license = "MIT"
+authors = [{name = "azaz2288"}]
+keywords = ["time-series", "data-leakage", "evaluation", "audit"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.12",
+  "Operating System :: OS Independent",
+]
+
+[project.scripts]
+chronoguard = "chronoguard.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["chronoguard*"]

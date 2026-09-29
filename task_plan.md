@@ -8,7 +8,7 @@ Turn Chronoguard from a useful small CLI into a reproducible, leakage-resistant 
 2. Reproducible experiment runner: explicit sample/target data contract, train-only transforms, baseline model, per-fold predictions and metrics, input fingerprints — complete for the initial baseline; immutable-input enforcement remains future work.
 3. Stronger statistical evaluation: uncertainty intervals, multiple baseline comparisons, failure-mode fixtures and larger synthetic benchmarks — in progress; paired block-bootstrap comparison implemented, more robust comparison evidence still pending.
 4. Artifact audit: independently verify predictions, fold membership, hashes, preprocessing state and reported metrics — complete; 21 local tests including 40 randomized small experiments and cross-platform CI passed at `583ec1979010c3c50359ae14873fc71bf008183b`.
-5. Packaging and demonstration: installable package, realistic public dataset/example, performance characterization, cross-platform CI and release notes — pending.
+5. Packaging and demonstration: installable package, realistic public dataset/example, performance characterization, cross-platform CI and release notes — in progress; begin with an installable wheel and console entry point.
 
 ## Quality bar
 - Each milestone has executable tests, failure cases, documentation and an honest limitation section.
@@ -16,4 +16,5 @@ Turn Chronoguard from a useful small CLI into a reproducible, leakage-resistant 
 - Publish increments to the existing public repository only after verification.
 
 ## Errors encountered
-- None yet in artifact-audit phase.
+- A first lookup for `.github/workflows/test.yml` failed because the existing workflow is named `ci.yml`; located it with `rg --files .github` and continued.
+- First local wheel smoke test ran from the repository root, so import resolved to source; reran from `work/` and confirmed the installed `site-packages` package. CI smoke step now changes to `$RUNNER_TEMP` before import.

@@ -2,3 +2,6 @@ __pycache__/
 *.pyc
 joined.csv
 plan.json
+build/
+dist/
+*.egg-info/

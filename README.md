@@ -4,7 +4,9 @@ Chronoguard is a standard-library Python CLI for preventing two common forms of 
 
 ## Quick start
 
-Requires Python 3.12+. From this repository root:
+Requires Python 3.12+. Install from a clone with `python -m pip install .`, or run with `python -m chronoguard` from the repository root. The installed `chronoguard` command accepts the same subcommands; no runtime third-party packages are needed.
+
+From this repository root:
 
 ```powershell
 python -m chronoguard join examples/samples.csv examples/facts.csv joined.csv
