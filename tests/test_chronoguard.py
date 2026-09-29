@@ -35,6 +35,19 @@ class JoinTests(unittest.TestCase):
         row = point_in_time_join([Sample("x", "A", when(2))], [Fact("A", when(2), "ready")])[0]
         self.assertEqual(row["feature_value"], "ready")
 
+    def test_age_policy_excludes_stale_fact_at_exact_boundary(self):
+        samples = [Sample("edge", "A", when(2)), Sample("stale", "A", when(2, 1))]
+        facts = [Fact("A", when(1), "old")]
+        rows = point_in_time_join(samples, facts, max_age_hours=24)
+        self.assertEqual([row["matched"] for row in rows], ["1", "0"])
+        self.assertEqual(rows[1]["feature_value"], "")
+
+    def test_invalid_age_policy(self):
+        with self.assertRaisesRegex(InputError, "max-age-hours"):
+            point_in_time_join([], [], max_age_hours=-1)
+        with self.assertRaisesRegex(InputError, "max-age-hours"):
+            point_in_time_join([], [], max_age_hours=1_000_001)
+
 
 class SplitTests(unittest.TestCase):
     def test_purges_label_reaching_test_window(self):
@@ -112,6 +125,18 @@ class CliTests(unittest.TestCase):
             issues = audit_join(samples, facts, joined)
             self.assertTrue(any("feature_available_at mismatch" in issue for issue in issues))
             self.assertTrue(any("Missing joined sample_id 'b'" in issue for issue in issues))
+
+    def test_cli_age_policy_and_independent_audit(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            samples, facts, joined = (root / name for name in ("samples.csv", "facts.csv", "joined.csv"))
+            write_table(samples, ("sample_id", "entity", "decision_time"), [("x", "A", "2026-01-03T01:00:00Z")])
+            write_table(facts, ("entity", "available_at", "value"), [("A", "2026-01-01T00:00:00Z", "stale")])
+            self.assertEqual(self.run_cli("join", str(samples), str(facts), str(joined), "--max-age-hours", "24").returncode, 0)
+            self.assertEqual(read_csv(joined, ("matched",))[0]["matched"], "0")
+            self.assertEqual(self.run_cli("audit-join", str(samples), str(facts), str(joined), "--max-age-hours", "24").returncode, 0)
+            self.assertEqual(self.run_cli("audit-join", str(samples), str(facts), str(joined)).returncode, 1)
+            self.assertEqual(self.run_cli("audit-join", str(samples), str(facts), str(joined), "--max-age-hours", "-1").returncode, 2)
 
     def test_rejects_malformed_csv(self):
         with tempfile.TemporaryDirectory() as temporary:

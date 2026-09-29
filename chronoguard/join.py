@@ -5,7 +5,7 @@ from __future__ import annotations
 from bisect import bisect_right
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from .common import InputError, format_time, parse_time, read_csv
@@ -55,7 +55,16 @@ def load_facts(path: Path) -> list[Fact]:
     return facts
 
 
-def point_in_time_join(samples: list[Sample], facts: list[Fact]) -> list[dict[str, str]]:
+def _max_age(max_age_hours: int | None) -> timedelta | None:
+    if max_age_hours is None:
+        return None
+    if type(max_age_hours) is not int or not 0 <= max_age_hours <= 1_000_000:
+        raise InputError("max-age-hours must be an integer between 0 and 1000000")
+    return timedelta(hours=max_age_hours)
+
+
+def point_in_time_join(samples: list[Sample], facts: list[Fact], max_age_hours: int | None = None) -> list[dict[str, str]]:
+    max_age = _max_age(max_age_hours)
     by_entity: dict[str, list[Fact]] = defaultdict(list)
     for fact in facts:
         by_entity[fact.entity].append(fact)
@@ -69,6 +78,8 @@ def point_in_time_join(samples: list[Sample], facts: list[Fact]) -> list[dict[st
         choices = by_entity.get(sample.entity, [])
         index = bisect_right(times.get(sample.entity, []), sample.decision_time) - 1
         fact = choices[index] if index >= 0 else None
+        if fact is not None and max_age is not None and sample.decision_time - fact.available_at > max_age:
+            fact = None
         result.append({
             "sample_id": sample.sample_id,
             "entity": sample.entity,
@@ -83,9 +94,23 @@ def point_in_time_join(samples: list[Sample], facts: list[Fact]) -> list[dict[st
 OUTPUT_FIELDS = ("sample_id", "entity", "decision_time", "matched", "feature_available_at", "feature_value")
 
 
-def audit_join(samples: list[Sample], facts: list[Fact], joined_path: Path) -> list[str]:
+def audit_join(samples: list[Sample], facts: list[Fact], joined_path: Path, max_age_hours: int | None = None) -> list[str]:
+    max_age = _max_age(max_age_hours)
     rows = read_csv(joined_path, OUTPUT_FIELDS)
-    expected = {row["sample_id"]: row for row in point_in_time_join(samples, facts)}
+    # Audit with a direct candidate scan, independent of the indexed join path.
+    expected = {}
+    for sample in samples:
+        eligible = [fact for fact in facts if fact.entity == sample.entity
+                    and fact.available_at <= sample.decision_time
+                    and (max_age is None or sample.decision_time - fact.available_at <= max_age)]
+        latest = max(eligible, key=lambda fact: fact.available_at, default=None)
+        expected[sample.sample_id] = {
+            "entity": sample.entity,
+            "decision_time": format_time(sample.decision_time),
+            "matched": "1" if latest else "0",
+            "feature_available_at": format_time(latest.available_at) if latest else "",
+            "feature_value": latest.value if latest else "",
+        }
     observed = set()
     violations = []
     for number, row in enumerate(rows, start=2):

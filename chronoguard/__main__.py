@@ -18,12 +18,14 @@ def main(argv: list[str] | None = None) -> int:
     join.add_argument("samples", type=Path)
     join.add_argument("facts", type=Path)
     join.add_argument("output", type=Path)
+    join.add_argument("--max-age-hours", type=int, help="reject facts older than this many hours at decision time")
     join.add_argument("--force", action="store_true")
 
     audit_join_cmd = commands.add_parser("audit-join", help="check an existing join against source samples and facts")
     audit_join_cmd.add_argument("samples", type=Path)
     audit_join_cmd.add_argument("facts", type=Path)
     audit_join_cmd.add_argument("joined", type=Path)
+    audit_join_cmd.add_argument("--max-age-hours", type=int, help="same age policy used by join")
 
     split = commands.add_parser("split", help="create a purged walk-forward plan")
     split.add_argument("events", type=Path)
@@ -42,11 +44,11 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.command == "join":
             check_output(args.output, (args.samples, args.facts), args.force)
-            rows = point_in_time_join(load_samples(args.samples), load_facts(args.facts))
+            rows = point_in_time_join(load_samples(args.samples), load_facts(args.facts), args.max_age_hours)
             write_csv(args.output, OUTPUT_FIELDS, rows)
             print(f"Wrote {len(rows)} samples; {sum(row['matched'] == '0' for row in rows)} had no available fact")
         elif args.command == "audit-join":
-            violations = audit_join(load_samples(args.samples), load_facts(args.facts), args.joined)
+            violations = audit_join(load_samples(args.samples), load_facts(args.facts), args.joined, args.max_age_hours)
             for violation in violations:
                 print(violation)
             if violations:
