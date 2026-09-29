@@ -19,6 +19,7 @@ python -m chronoguard evaluate examples/events.csv plan.json examples/observatio
 python -m chronoguard audit-evaluation examples/events.csv plan.json examples/observations.csv report.json
 python -m unittest discover -s tests -v
 python examples/run_pipeline.py
+python examples/run_seattle_weather.py
 ```
 
 `join` matches the latest `available_at` for the same entity no later than `decision_time`. The output preserves sample order and explicitly marks unmatched samples. A fact's source/event timestamp is insufficient for this check: `available_at` must represent when the value could actually be used. Duplicate entity/availability pairs are rejected rather than resolved arbitrarily. Optional `--max-age-hours` rejects stale facts; a fact exactly on the age boundary is still valid. Use the same policy with `audit-join`. The audit independently scans eligible source facts and checks an existing joined CSV, including missing rows, stale matches and future-valued features.
@@ -32,6 +33,8 @@ Report schema version 2 also includes a paired squared-error comparison with the
 `audit-evaluation` independently checks the saved report against those three input files. It re-audits fold membership, checks input hashes, recomputes training-only preprocessing statistics, verifies the saved ridge coefficients satisfy the regularized normal equations, and checks every test prediction and reported metric. It does not call the evaluation runner's fitting or metric functions. It regenerates the deterministic bootstrap comparison using the same bootstrap routine as the runner, so that routine is not independently verified by the audit. Exit status is 0 for a matching report, 1 for content violations, or 2 for malformed inputs.
 
 `assemble` bridges the two workflows: given source samples, facts, an existing joined CSV, and a `sample_id,target` CSV, it first audits every joined feature against the raw facts and then writes numeric `sample_id,target,signal` observations for `evaluate`. Use the same `--max-age-hours` policy that produced the join. Duplicate/missing targets, altered joined rows and nonnumeric matched features are rejected. The full synthetic demonstration in `examples/run_pipeline.py` runs join → audit → assemble → split → audit → evaluate → report audit, then prints held-out and baseline RMSE plus the loss-difference interval. Its values are synthetic and are not evidence of real predictive performance.
+
+For a pinned real-data exercise, `examples/run_seattle_weather.py` downloads and verifies NOAA-derived Seattle daily weather data (or accepts a local copy), then runs the same audited pipeline on a previous-day-temperature forecast. Read the [case study](examples/SEATTLE_CASE_STUDY.md) first: the dataset lacks publication timestamps, so the script uses a clearly stated availability-lag assumption and does not claim live forecast performance. Network access is needed only for that example's initial download.
 
 Timestamps must be ISO 8601 with an explicit UTC offset, including `Z`. All output times are normalized to UTC. Commands return 0 on success, 1 when an audit finds violations, and 2 for invalid data or I/O errors. Existing output files are protected unless `--force` is provided. Output is written atomically.
 
