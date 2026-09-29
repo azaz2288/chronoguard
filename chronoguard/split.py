@@ -71,10 +71,14 @@ def audit_plan(events: list[Event], plan: Any) -> list[str]:
     lookup = {event.sample_id: event for event in events}
     gap = timedelta(hours=plan["gap_hours"])
     violations = []
+    if not plan["folds"]:
+        violations.append("Split plan has no folds")
     previous_end: datetime | None = None
     for number, fold in enumerate(plan["folds"], start=1):
         if not isinstance(fold, dict):
             raise InputError(f"Fold {number} is not an object")
+        if type(fold.get("fold")) is not int or fold["fold"] != number:
+            violations.append(f"Fold {number}: fold number is missing or out of sequence")
         test_start = parse_time(fold.get("test_start"), f"Fold {number} test_start")
         test_last = parse_time(fold.get("test_last_start"), f"Fold {number} test_last_start")
         if test_last < test_start:

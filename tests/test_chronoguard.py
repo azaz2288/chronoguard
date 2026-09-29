@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from chronoguard.common import InputError, read_csv
+from chronoguard.evaluate import Observation, evaluate, load_observations
 from chronoguard.join import Fact, Sample, audit_join, point_in_time_join
 from chronoguard.split import Event, audit_plan, make_plan
 
@@ -85,6 +86,66 @@ class SplitTests(unittest.TestCase):
         plan["folds"][0]["test_ids"].clear()
         self.assertTrue(any("missing test IDs: c" in issue for issue in audit_plan(events, plan)))
 
+    def test_audit_rejects_empty_or_misnumbered_folds(self):
+        events = [Event("a", when(1), when(1)), Event("b", when(2), when(2)), Event("c", when(3), when(3))]
+        self.assertIn("Split plan has no folds", audit_plan(events, {"version": 1, "gap_hours": 0, "folds": []}))
+        plan = make_plan(events, folds=1, min_train_times=2, test_times=1, gap_hours=0)
+        plan["folds"][0]["fold"] = 2
+        self.assertTrue(any("out of sequence" in issue for issue in audit_plan(events, plan)))
+
+
+class EvaluationTests(unittest.TestCase):
+    def fixture(self):
+        events = [Event(str(index), when(index), when(index)) for index in range(1, 6)]
+        plan = make_plan(events, folds=2, min_train_times=2, test_times=1, gap_hours=0)
+        observations = {str(index): Observation(str(index), float(2 * index + 1), (float(index),)) for index in range(1, 6)}
+        return events, plan, observations
+
+    def test_train_only_statistics_and_out_of_sample_rows(self):
+        events, plan, observations = self.fixture()
+        result = evaluate(events, plan, observations, ["signal"], 0.1, {"events": "test"})
+        self.assertEqual(result["overall"]["count"], 2)
+        self.assertLess(result["overall"]["rmse"], result["overall_baseline"]["rmse"])
+        self.assertEqual(result["folds"][0]["model"]["impute_means"], [1.5])
+        self.assertEqual([row["sample_id"] for row in result["folds"][0]["predictions"]], ["3"])
+        self.assertEqual(result["source_sha256"], {"events": "test"})
+        altered = dict(observations)
+        altered["3"] = Observation("3", 100000.0, (100000.0,))
+        other = evaluate(events, plan, altered, ["signal"], 0.1, {})
+        self.assertEqual(result["folds"][0]["model"], other["folds"][0]["model"])
+
+    def test_missing_features_use_training_imputation(self):
+        events, plan, observations = self.fixture()
+        observations["1"] = Observation("1", 3.0, (None,))
+        observations["3"] = Observation("3", 7.0, (None,))
+        result = evaluate(events, plan, observations, ["signal"], 1.0, {})
+        self.assertEqual(result["folds"][0]["model"]["impute_means"], [2.0])
+        self.assertAlmostEqual(result["folds"][0]["predictions"][0]["prediction"], 4.0)
+
+    def test_rejects_invalid_plan_alpha_and_observations(self):
+        events, plan, observations = self.fixture()
+        plan["folds"][0]["train_ids"].append("3")
+        with self.assertRaisesRegex(InputError, "failed audit"):
+            evaluate(events, plan, observations, ["signal"], 1.0, {})
+        plan["folds"][0]["train_ids"].pop()
+        with self.assertRaisesRegex(InputError, "no folds"):
+            evaluate(events, {"version": 1, "gap_hours": 0, "folds": []}, observations, ["signal"], 1.0, {})
+        with self.assertRaisesRegex(InputError, "alpha"):
+            evaluate(events, plan, observations, ["signal"], 0.0, {})
+        observations.pop("5")
+        with self.assertRaisesRegex(InputError, "do not match"):
+            evaluate(events, plan, observations, ["signal"], 1.0, {})
+
+    def test_rejects_duplicate_ids_and_nonfinite_features(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "data.csv"
+            write_table(path, ("sample_id", "target", "signal"), [("a", "1", "2"), ("a", "2", "3")])
+            with self.assertRaisesRegex(InputError, "duplicate sample_id"):
+                load_observations(path, ["signal"])
+            write_table(path, ("sample_id", "target", "signal"), [("a", "1", "NaN")])
+            with self.assertRaisesRegex(InputError, "non-finite"):
+                load_observations(path, ["signal"])
+
 
 class CliTests(unittest.TestCase):
     def run_cli(self, *args: str) -> subprocess.CompletedProcess[str]:
@@ -144,6 +205,21 @@ class CliTests(unittest.TestCase):
             path.write_text("sample_id,entity,decision_time\nx,A\n", encoding="utf-8")
             with self.assertRaisesRegex(InputError, "different number of columns"):
                 read_csv(path, ("sample_id", "entity", "decision_time"))
+
+    def test_evaluate_cli_round_trip(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            events, observations, plan, report = (root / name for name in ("events.csv", "observations.csv", "plan.json", "report.json"))
+            event_rows = [(str(index), f"2026-01-0{index}T00:00:00Z", f"2026-01-0{index}T00:00:00Z") for index in range(1, 6)]
+            write_table(events, ("sample_id", "start_at", "end_at"), event_rows)
+            write_table(observations, ("sample_id", "target", "signal"), [(str(index), str(2 * index + 1), str(index)) for index in range(1, 6)])
+            self.assertEqual(self.run_cli("split", str(events), str(plan), "--folds", "2", "--min-train-times", "2", "--test-times", "1").returncode, 0)
+            run = self.run_cli("evaluate", str(events), str(plan), str(observations), str(report), "--feature", "signal")
+            self.assertEqual(run.returncode, 0, run.stderr)
+            saved = json.loads(report.read_text(encoding="utf-8"))
+            self.assertEqual(saved["overall"]["count"], 2)
+            self.assertEqual(len(saved["source_sha256"]["observations"]), 64)
+            self.assertEqual(self.run_cli("evaluate", str(events), str(plan), str(observations), str(report), "--feature", "signal").returncode, 2)
 
 
 if __name__ == "__main__":

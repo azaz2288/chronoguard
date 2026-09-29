@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 from .common import InputError, check_output, read_json, write_csv, write_json
+from .evaluate import evaluate, load_observations, sha256_file
 from .join import OUTPUT_FIELDS, audit_join, load_facts, load_samples, point_in_time_join
 from .split import audit_plan, load_events, make_plan
 
@@ -40,6 +41,15 @@ def main(argv: list[str] | None = None) -> int:
     audit.add_argument("events", type=Path)
     audit.add_argument("plan", type=Path)
 
+    experiment = commands.add_parser("evaluate", help="run a train-only ridge baseline on an audited walk-forward plan")
+    experiment.add_argument("events", type=Path)
+    experiment.add_argument("plan", type=Path)
+    experiment.add_argument("observations", type=Path)
+    experiment.add_argument("output", type=Path)
+    experiment.add_argument("--feature", action="append", required=True, help="numeric feature column; repeat for multiple features")
+    experiment.add_argument("--alpha", type=float, default=1.0, help="positive ridge regularization strength")
+    experiment.add_argument("--force", action="store_true")
+
     args = parser.parse_args(argv)
     try:
         if args.command == "join":
@@ -63,13 +73,21 @@ def main(argv: list[str] | None = None) -> int:
                 raise InputError("Internal split audit failed: " + "; ".join(violations))
             write_json(args.output, plan)
             print(f"Wrote {len(plan['folds'])} audited folds")
-        else:
+        elif args.command == "audit":
             violations = audit_plan(load_events(args.events), read_json(args.plan))
             for violation in violations:
                 print(violation)
             if violations:
                 return 1
             print("OK: no train/test label leakage found")
+        else:
+            check_output(args.output, (args.events, args.plan, args.observations), args.force)
+            result = evaluate(load_events(args.events), read_json(args.plan),
+                              load_observations(args.observations, args.feature), args.feature, args.alpha,
+                              {"events": sha256_file(args.events), "plan": sha256_file(args.plan),
+                               "observations": sha256_file(args.observations)})
+            write_json(args.output, result)
+            print(f"Wrote {len(result['folds'])} audited folds and {result['overall']['count']} out-of-sample predictions")
         return 0
     except InputError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
