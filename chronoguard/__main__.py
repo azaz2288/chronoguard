@@ -6,6 +6,7 @@ import argparse
 import sys
 from pathlib import Path
 
+from .assemble import OUTPUT_FIELDS as ASSEMBLED_FIELDS, assemble
 from .audit_evaluation import audit_evaluation
 from .common import InputError, check_output, read_json, write_csv, write_json
 from .evaluate import evaluate, load_observations, sha256_file
@@ -28,6 +29,15 @@ def main(argv: list[str] | None = None) -> int:
     audit_join_cmd.add_argument("facts", type=Path)
     audit_join_cmd.add_argument("joined", type=Path)
     audit_join_cmd.add_argument("--max-age-hours", type=int, help="same age policy used by join")
+
+    assemble_cmd = commands.add_parser("assemble", help="combine an audited point-in-time join with numeric targets")
+    assemble_cmd.add_argument("samples", type=Path)
+    assemble_cmd.add_argument("facts", type=Path)
+    assemble_cmd.add_argument("joined", type=Path)
+    assemble_cmd.add_argument("targets", type=Path)
+    assemble_cmd.add_argument("output", type=Path)
+    assemble_cmd.add_argument("--max-age-hours", type=int, help="same age policy used by join")
+    assemble_cmd.add_argument("--force", action="store_true")
 
     split = commands.add_parser("split", help="create a purged walk-forward plan")
     split.add_argument("events", type=Path)
@@ -74,6 +84,11 @@ def main(argv: list[str] | None = None) -> int:
             if violations:
                 return 1
             print("OK: joined rows match information available at each decision")
+        elif args.command == "assemble":
+            check_output(args.output, (args.samples, args.facts, args.joined, args.targets), args.force)
+            rows = assemble(args.samples, args.facts, args.joined, args.targets, args.max_age_hours)
+            write_csv(args.output, ASSEMBLED_FIELDS, rows)
+            print(f"Wrote {len(rows)} audited model observations")
         elif args.command == "split":
             check_output(args.output, (args.events,), args.force)
             events = load_events(args.events)
