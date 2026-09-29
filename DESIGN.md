@@ -1,0 +1,9 @@
+# Design and validity boundaries
+
+Chronoguard separates two clocks that are often collapsed in notebooks. A sample's `decision_time` is when a prediction is made. A fact's `available_at` is when the production system could have read its value. For entity \(e\) and decision \(t\), the join selects the fact with the greatest availability time \(a \le t\). Facts published later are invisible even if they describe earlier events. Timestamps require explicit offsets and are normalized to UTC before comparison. Duplicate facts with the same entity and availability time are rejected because the winning value would be ambiguous.
+
+For evaluation, each event has `start_at` and `end_at` for its label observation. A training event qualifies for a test block beginning at \(T\) only if its start is before \(T\) and `end_at + gap_hours <= T`. Earlier events that fail the second condition are purged. Test blocks are built from distinct start times, keeping events tied on a timestamp together. The train window expands with each fold; there is no random shuffling.
+
+The generated plan lists every prior event as either training or purged and every event in the test block as test. `audit` recomputes these sets from the event CSV, checks unknown/duplicate/overlapping IDs, checks label horizons, and rejects omitted events. Its conclusion is limited by the accuracy of the supplied timestamps. It cannot prove that a feature pipeline did not fit preprocessing on all rows or that a delayed publication time was recorded honestly.
+
+Outputs are deterministic for the same ordered inputs. Existing files require `--force`; temporary files in the destination directory and `os.replace` avoid partial output. This does not provide transactional consistency if source CSVs change during reading. Use immutable inputs for research records.

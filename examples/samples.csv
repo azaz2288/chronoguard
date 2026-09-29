@@ -1,0 +1,4 @@
+sample_id,entity,decision_time
+decision-1,SKU-A,2026-01-02T12:00:00Z
+decision-2,SKU-A,2026-01-04T12:00:00Z
+decision-3,SKU-B,2026-01-04T12:00:00Z
