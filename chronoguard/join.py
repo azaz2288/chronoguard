@@ -97,11 +97,15 @@ OUTPUT_FIELDS = ("sample_id", "entity", "decision_time", "matched", "feature_ava
 def audit_join(samples: list[Sample], facts: list[Fact], joined_path: Path, max_age_hours: int | None = None) -> list[str]:
     max_age = _max_age(max_age_hours)
     rows = read_csv(joined_path, OUTPUT_FIELDS)
-    # Audit with a direct candidate scan, independent of the indexed join path.
+    # Audit with a direct candidate scan per entity, independent of the
+    # indexed join's sort/bisect selection path.
+    facts_by_entity: dict[str, list[Fact]] = defaultdict(list)
+    for fact in facts:
+        facts_by_entity[fact.entity].append(fact)
     expected = {}
     for sample in samples:
-        eligible = [fact for fact in facts if fact.entity == sample.entity
-                    and fact.available_at <= sample.decision_time
+        eligible = [fact for fact in facts_by_entity.get(sample.entity, [])
+                    if fact.available_at <= sample.decision_time
                     and (max_age is None or sample.decision_time - fact.available_at <= max_age)]
         latest = max(eligible, key=lambda fact: fact.available_at, default=None)
         expected[sample.sample_id] = {

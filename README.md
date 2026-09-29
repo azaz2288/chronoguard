@@ -36,6 +36,8 @@ Report schema version 2 also includes a paired squared-error comparison with the
 
 For a pinned real-data exercise, `examples/run_seattle_weather.py` downloads and verifies NOAA-derived Seattle daily weather data (or accepts a local copy), then runs the same audited pipeline on a previous-day-temperature forecast. Read the [case study](examples/SEATTLE_CASE_STUDY.md) first: the dataset lacks publication timestamps, so the script uses a clearly stated availability-lag assumption and does not claim live forecast performance. Network access is needed only for that example's initial download.
 
+The synthetic join/audit benchmark is reproducible with `python -m benchmarks.join_audit`; see [benchmark methodology and limitations](benchmarks/README.md). It identified expensive cross-entity scans in the independent auditor, which are now avoided by grouping facts by entity while retaining direct per-entity selection.
+
 Timestamps must be ISO 8601 with an explicit UTC offset, including `Z`. All output times are normalized to UTC. Commands return 0 on success, 1 when an audit finds violations, and 2 for invalid data or I/O errors. Existing output files are protected unless `--force` is provided. Output is written atomically.
 
 ## Limits and next steps

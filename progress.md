@@ -11,3 +11,8 @@
 - Packaging commit `e6a8675c264ad899c3bd4f4e27d5a32e6ad2427b` pushed; GitHub Actions run 36591554847 passed both Windows and Ubuntu build/install smoke tests.
 - Added `assemble` to reject altered joins before producing numeric observations, plus a 20-event synthetic pipeline demonstrating join → audits → evaluation. Local end-to-end run and 28 tests passed; demo is explicitly synthetic, not real performance evidence. Commit `d0b45e3bfd110ab3c6a746be9dc70756603881cb` pushed; CI run 36593129347 passed.
 - Added a pinned NOAA-derived Seattle weather case study. The script checks SHA-256, explicitly assumes a one-day availability lag absent from the source, runs all audits and reports 450 held-out predictions. The local run yielded RMSE 2.692°C versus 7.765°C for the training-mean baseline; this is scenario-specific descriptive evidence, not a production claim. Added provenance/limitations and an offline lag-mapping test. 29 local tests pass; CI verification pending.
+- Weather case-study commit `49baedb20c987e537ad32d78ed9412e6aceea9bc` pushed; GitHub Actions run 36594404608 passed.
+
+## 2026-09-30
+- Added a deterministic synthetic benchmark. Its first direct invocation failed to import the package because the script directory was on Python's path; switched to `python -m benchmarks.join_audit` and recorded the invocation.
+- Before optimization, 8,000 rows / 100 entities took 3.744 s for the independent audit on local Windows/Python 3.12. Grouping facts per entity, while retaining direct candidate selection, reduced one measured run to 0.478 s. These are single-run observations, not controlled medians. All 31 tests and the synthetic end-to-end example passed after the optimization; CI verification pending.
