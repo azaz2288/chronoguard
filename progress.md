@@ -16,3 +16,4 @@
 ## 2026-09-30
 - Added a deterministic synthetic benchmark. Its first direct invocation failed to import the package because the script directory was on Python's path; switched to `python -m benchmarks.join_audit` and recorded the invocation.
 - Before optimization, 8,000 rows / 100 entities took 3.744 s for the independent audit on local Windows/Python 3.12. Grouping facts per entity, while retaining direct candidate selection, reduced one measured run to 0.478 s. These are single-run observations, not controlled medians. All 31 tests and the synthetic end-to-end example passed after the optimization; CI verification pending.
+- Independently reimplemented the report auditor's paired moving-block bootstrap so a runner error cannot validate itself through shared code. Added fault injection and unsupported-field checks. All 33 local tests and the synthetic end-to-end audit passed; cross-platform CI verification pending.

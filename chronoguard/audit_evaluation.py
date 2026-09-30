@@ -1,19 +1,19 @@
 """Independent checks for a saved walk-forward evaluation report.
 
-This module does not call the experiment runner's fit, transform or metric
-functions. It checks the saved model against training data and ridge normal
-equations, then recomputes held-out predictions and metrics.
+This module does not call the experiment runner's fit, transform, metric or
+bootstrap functions. It checks the saved model against training data and ridge
+normal equations, then recomputes predictions, metrics and uncertainty bounds.
 """
 
 from __future__ import annotations
 
 import math
+import random
 from typing import Any
 
 from .common import InputError
 from .evaluate import Observation
 from .split import Event, audit_plan
-from .statistics import loss_comparison
 
 
 def _number(value: Any, label: str) -> float:
@@ -56,6 +56,73 @@ def _check_metrics(saved: Any, rows: list[tuple[float, float]], label: str, issu
                 issues.append(f"{label}.{name} mismatch")
         elif not _close(_number(present, f"{label}.{name}"), value):
             issues.append(f"{label}.{name} mismatch")
+
+
+def _audit_loss_comparison(comparison: dict[str, Any],
+                           model_rows: list[tuple[float, float]],
+                           baseline_rows: list[tuple[float, float]],
+                           issues: list[str]) -> None:
+    """Recreate the paired bootstrap without the runner's statistics code."""
+    repetitions = comparison.get("repetitions")
+    block_size = comparison.get("block_size")
+    seed = comparison.get("seed")
+    count = len(model_rows)
+    if (type(repetitions) is not int or not 100 <= repetitions <= 10000
+            or type(block_size) is not int or not 1 <= block_size <= count
+            or type(seed) is not int or not 0 <= seed <= 2**32 - 1):
+        raise InputError("Report loss_comparison controls are invalid")
+    losses = []
+    for (target, model), (_, baseline) in zip(model_rows, baseline_rows):
+        delta = (model - target) ** 2 - (baseline - target) ** 2
+        if not math.isfinite(delta):
+            raise InputError("Non-finite paired loss difference during audit")
+        losses.append(delta)
+    try:
+        mean = math.fsum(losses) / count
+    except OverflowError as exc:
+        raise InputError("Paired loss differences overflow during audit") from exc
+    if not math.isfinite(mean):
+        raise InputError("Non-finite paired loss mean during audit")
+    expected: dict[str, Any] = {
+        "method": "circular-moving-block-bootstrap", "loss": "squared-error",
+        "delta": "model-minus-train-mean-baseline", "count": count,
+        "mean_loss_delta": mean, "repetitions": repetitions,
+        "block_size": block_size, "seed": seed, "interval_95": None,
+    }
+    if count < 10:
+        expected["interval_unavailable_reason"] = "fewer_than_10_held_out_predictions"
+    else:
+        generator = random.Random(seed)
+        estimates = []
+        for _ in range(repetitions):
+            sampled = []
+            while len(sampled) < count:
+                first = generator.randrange(count)
+                sampled.extend(losses[(first + offset) % count]
+                               for offset in range(min(block_size, count - len(sampled))))
+            try:
+                estimate = math.fsum(sampled) / count
+            except OverflowError as exc:
+                raise InputError("Bootstrap loss estimate overflows during audit") from exc
+            if not math.isfinite(estimate):
+                raise InputError("Non-finite bootstrap loss estimate during audit")
+            estimates.append(estimate)
+        estimates.sort()
+        expected["interval_95"] = [estimates[math.floor(0.025 * (repetitions - 1))],
+                                   estimates[math.ceil(0.975 * (repetitions - 1))]]
+    if set(comparison) != set(expected):
+        issues.append("loss_comparison field set mismatch")
+    for field, value in expected.items():
+        actual = comparison.get(field)
+        if field == "mean_loss_delta":
+            if not _close(_number(actual, f"loss_comparison.{field}"), value):
+                issues.append(f"loss_comparison.{field} mismatch")
+        elif field == "interval_95" and value is not None:
+            interval = _vector(actual, 2, "loss_comparison.interval_95")
+            if any(not _close(observed, reference) for observed, reference in zip(interval, value)):
+                issues.append("loss_comparison.interval_95 mismatch")
+        elif actual != value:
+            issues.append(f"loss_comparison.{field} mismatch")
 
 
 def audit_evaluation(events: list[Event], plan: Any, observations: dict[str, Observation],
@@ -162,21 +229,5 @@ def audit_evaluation(events: list[Event], plan: Any, observations: dict[str, Obs
     comparison = report.get("loss_comparison")
     if not isinstance(comparison, dict):
         raise InputError("Report loss_comparison must be an object")
-    repetitions = comparison.get("repetitions")
-    block_size = comparison.get("block_size")
-    seed = comparison.get("seed")
-    combined = [{"target": target, "prediction": model, "train_mean_baseline": baseline}
-                for (target, model), (_, baseline) in zip(all_model_rows, all_baseline_rows)]
-    expected_comparison = loss_comparison(combined, repetitions, block_size, seed)
-    for field, expected in expected_comparison.items():
-        actual = comparison.get(field)
-        if field == "mean_loss_delta":
-            if not _close(_number(actual, f"loss_comparison.{field}"), expected):
-                issues.append(f"loss_comparison.{field} mismatch")
-        elif field == "interval_95" and expected is not None:
-            values = _vector(actual, 2, "loss_comparison.interval_95")
-            if any(not _close(item, target) for item, target in zip(values, expected)):
-                issues.append("loss_comparison.interval_95 mismatch")
-        elif actual != expected:
-            issues.append(f"loss_comparison.{field} mismatch")
+    _audit_loss_comparison(comparison, all_model_rows, all_baseline_rows, issues)
     return issues

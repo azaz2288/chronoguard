@@ -3,6 +3,7 @@
 import copy
 import random
 import unittest
+from unittest.mock import patch
 
 from chronoguard.audit_evaluation import audit_evaluation
 from chronoguard.evaluate import Observation, evaluate
@@ -46,6 +47,37 @@ class EvaluationProperties(unittest.TestCase):
         self.assertEqual(audit_evaluation(events, plan, observations, report, {}), [])
         report["loss_comparison"]["interval_95"][0] += 1
         self.assertIn("loss_comparison.interval_95 mismatch", audit_evaluation(events, plan, observations, report, {}))
+
+    def test_auditor_rejects_faulty_runner_bootstrap(self):
+        origin = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        events = [Event(f"s{index}", origin + timedelta(days=index), origin + timedelta(days=index))
+                  for index in range(24)]
+        observations = {f"s{index}": Observation(f"s{index}", float(index + index % 4),
+                                                   (float(index % 7),)) for index in range(24)}
+        plan = make_plan(events, folds=2, min_train_times=10, test_times=6, gap_hours=0)
+        correct = evaluate(events, plan, observations, ["signal"], 1.0, {},
+                           bootstrap_reps=100, block_size=3, seed=7)
+        fabricated = dict(correct["loss_comparison"])
+        fabricated["interval_95"] = [1000.0, 2000.0]
+        with patch("chronoguard.evaluate.loss_comparison", return_value=fabricated):
+            report = evaluate(events, plan, observations, ["signal"], 1.0, {},
+                              bootstrap_reps=100, block_size=3, seed=7)
+        self.assertIn("loss_comparison.interval_95 mismatch",
+                      audit_evaluation(events, plan, observations, report, {}))
+        self.assertEqual(audit_evaluation(events, plan, observations, correct, {}), [])
+
+    def test_auditor_rejects_extra_bootstrap_claim(self):
+        origin = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        events = [Event(f"s{index}", origin + timedelta(days=index), origin + timedelta(days=index))
+                  for index in range(15)]
+        observations = {f"s{index}": Observation(f"s{index}", float(index), (float(index),))
+                        for index in range(15)}
+        plan = make_plan(events, folds=1, min_train_times=10, test_times=5, gap_hours=0)
+        report = evaluate(events, plan, observations, ["signal"], 1.0, {}, bootstrap_reps=100)
+        self.assertEqual(audit_evaluation(events, plan, observations, report, {}), [])
+        report["loss_comparison"]["significant"] = True
+        self.assertIn("loss_comparison field set mismatch",
+                      audit_evaluation(events, plan, observations, report, {}))
 
 
 if __name__ == "__main__":
