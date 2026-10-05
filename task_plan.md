@@ -16,6 +16,7 @@ Turn Chronoguard from a useful small CLI into a reproducible, leakage-resistant 
 - Publish increments to the existing public repository only after verification.
 
 ## Errors encountered
+- 2026-10-06 output-safety regression first produced 9 failures / 4 errors / 1 Windows symlink skip, proving late competing CSV/JSON outputs were overwritten and ambiguous JSON accepted. New explicit force argument intentionally changed direct writer behavior; two fixture-rewrite tests initially errored, then declared force=True only for their intentional tampering. No input/output protection relaxed.
 - A first lookup for `.github/workflows/test.yml` failed because the existing workflow is named `ci.yml`; located it with `rg --files .github` and continued.
 - First local wheel smoke test ran from the repository root, so import resolved to source; reran from `work/` and confirmed the installed `site-packages` package. CI smoke step now changes to `$RUNNER_TEMP` before import.
 - End-to-end integration commit `d0b45e3` was created locally, but the first push failed with a Windows Schannel TLS handshake error. A subsequent read-only `ls-remote` succeeded and showed the prior remote commit, so retry with an explicit HTTP/1.1 Git request and verify the remote SHA.

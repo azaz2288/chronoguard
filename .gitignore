@@ -5,3 +5,4 @@ plan.json
 build/
 dist/
 *.egg-info/
+.venv/

@@ -38,7 +38,9 @@ For a pinned real-data exercise, `examples/run_seattle_weather.py` downloads and
 
 The synthetic join/audit benchmark is reproducible with `python -m benchmarks.join_audit`; see [benchmark methodology and limitations](benchmarks/README.md). It identified expensive cross-entity scans in the independent auditor, which are now avoided by grouping facts by entity while retaining direct per-entity selection.
 
-Timestamps must be ISO 8601 with an explicit UTC offset, including `Z`. All output times are normalized to UTC. Commands return 0 on success, 1 when an audit finds violations, and 2 for invalid data or I/O errors. Existing output files are protected unless `--force` is provided. Output is written atomically.
+Timestamps must be ISO 8601 with an explicit UTC offset, including `Z`. All output times are normalized to UTC. Commands return 0 on success, 1 when an audit finds violations, and 2 for invalid data or I/O errors. Existing output files are protected unless `--force` is provided. Output is written atomically. Without force, exclusive hard-link publication protects even against a competing output created after the preflight check; filesystems without hard-link support fail closed. Explicit force uses atomic replacement. Completed temporary bytes are flushed and fsynced first; directory durability after a crash is not guaranteed. This is not isolation from malicious ancestor-path changes.
+
+JSON inputs reject duplicate keys (including nested objects), NaN/Infinity literals, and floating-point overflow such as `1e400`. JSON outputs reject nonfinite or unserializable values without replacing an existing destination. Direct Python callers of `write_csv`/`write_json` must now pass `force=True` to intentionally replace a file; the default protects existing results just like the CLI.
 
 ## Limits and next steps
 

@@ -47,7 +47,7 @@ class AssembleTests(unittest.TestCase):
             samples, facts, joined, targets, output = self.fixture(Path(temporary))
             rows = read_csv(joined, OUTPUT_FIELDS)
             rows[0]["feature_value"] = "999"
-            write_csv(joined, OUTPUT_FIELDS, rows)
+            write_csv(joined, OUTPUT_FIELDS, rows, force=True)
             with self.assertRaisesRegex(InputError, "failed audit"):
                 assemble(samples, facts, joined, targets)
             self.assertFalse(output.exists())
@@ -60,7 +60,7 @@ class AssembleTests(unittest.TestCase):
                 assemble(samples, facts, joined, targets)
             table(targets, ("sample_id", "target"), [("a", "4"), ("b", "6")])
             table(facts, ("entity", "available_at", "value"), [("X", "2026-01-01T00:00:00Z", "hello")])
-            write_csv(joined, OUTPUT_FIELDS, point_in_time_join(load_samples(samples), load_facts(facts)))
+            write_csv(joined, OUTPUT_FIELDS, point_in_time_join(load_samples(samples), load_facts(facts)), force=True)
             with self.assertRaisesRegex(InputError, "must be numeric"):
                 assemble(samples, facts, joined, targets)
 

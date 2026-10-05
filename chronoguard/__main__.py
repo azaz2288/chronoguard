@@ -75,7 +75,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "join":
             check_output(args.output, (args.samples, args.facts), args.force)
             rows = point_in_time_join(load_samples(args.samples), load_facts(args.facts), args.max_age_hours)
-            write_csv(args.output, OUTPUT_FIELDS, rows)
+            write_csv(args.output, OUTPUT_FIELDS, rows, force=args.force)
             print(f"Wrote {len(rows)} samples; {sum(row['matched'] == '0' for row in rows)} had no available fact")
         elif args.command == "audit-join":
             violations = audit_join(load_samples(args.samples), load_facts(args.facts), args.joined, args.max_age_hours)
@@ -87,7 +87,7 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "assemble":
             check_output(args.output, (args.samples, args.facts, args.joined, args.targets), args.force)
             rows = assemble(args.samples, args.facts, args.joined, args.targets, args.max_age_hours)
-            write_csv(args.output, ASSEMBLED_FIELDS, rows)
+            write_csv(args.output, ASSEMBLED_FIELDS, rows, force=args.force)
             print(f"Wrote {len(rows)} audited model observations")
         elif args.command == "split":
             check_output(args.output, (args.events,), args.force)
@@ -96,7 +96,7 @@ def main(argv: list[str] | None = None) -> int:
             violations = audit_plan(events, plan)
             if violations:
                 raise InputError("Internal split audit failed: " + "; ".join(violations))
-            write_json(args.output, plan)
+            write_json(args.output, plan, force=args.force)
             print(f"Wrote {len(plan['folds'])} audited folds")
         elif args.command == "audit":
             violations = audit_plan(load_events(args.events), read_json(args.plan))
@@ -112,7 +112,7 @@ def main(argv: list[str] | None = None) -> int:
                               {"events": sha256_file(args.events), "plan": sha256_file(args.plan),
                                "observations": sha256_file(args.observations)},
                               args.bootstrap_reps, args.block_size, args.seed)
-            write_json(args.output, result)
+            write_json(args.output, result, force=args.force)
             print(f"Wrote {len(result['folds'])} audited folds and {result['overall']['count']} out-of-sample predictions")
         else:
             report = read_json(args.report)
