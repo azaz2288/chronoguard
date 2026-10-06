@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 import csv
+import hashlib
+import io
 import json
 import math
 import os
+import stat
 import tempfile
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -14,6 +18,55 @@ from typing import Any
 
 class InputError(Exception):
     """Invalid input data or an unsafe output path."""
+
+
+@dataclass(frozen=True)
+class InputSnapshot:
+    """Captured bytes, not a promise that the original path remains unchanged."""
+
+    path: Path
+    data: bytes
+
+    def __str__(self) -> str:
+        return str(self.path)
+
+    @property
+    def sha256(self) -> str:
+        return hashlib.sha256(self.data).hexdigest()
+
+    @classmethod
+    def capture(cls, path: Path) -> InputSnapshot:
+        def identity(info, *, path_check=False):
+            # Reading can update atime; exclude it from the change check.
+            result = (info.st_dev, info.st_ino, info.st_mode, info.st_size, info.st_mtime_ns)
+            # Python 3.12 Windows stat/fstat may disagree about ctime after
+            # hard-link publication (creation vs metadata-change time).
+            return result if path_check and os.name == 'nt' else (*result, info.st_ctime_ns)
+
+        try:
+            # Avoid waiting on an ordinary FIFO/device input. The descriptor
+            # check below is still required; this is not hostile-path isolation.
+            if not stat.S_ISREG(path.stat().st_mode):
+                raise InputError(f"{path}: snapshot input must be a regular file")
+            with path.open('rb') as source:
+                before = os.fstat(source.fileno())
+                if not stat.S_ISREG(before.st_mode):
+                    raise InputError(f"{path}: snapshot input must be a regular file")
+                # Bound capture to the observed length plus one growth sentinel.
+                data = source.read(before.st_size + 1)
+                after = os.fstat(source.fileno())
+                if (identity(before) != identity(after) or len(data) != before.st_size
+                        or identity(after, path_check=True) != identity(path.stat(), path_check=True)):
+                    raise InputError(f"{path}: input changed during capture; retry with stable files")
+            return cls(path, data)
+        except OSError as exc:
+            raise InputError(f"Cannot capture {path}: {exc}") from exc
+
+
+def _text_source(path: Path | InputSnapshot, encoding: str):
+    if isinstance(path, InputSnapshot):
+        return io.StringIO(path.data.decode(encoding), newline='')
+    return path.open('r', encoding=encoding, newline='')
 
 
 def parse_time(value: str, label: str) -> datetime:
@@ -30,9 +83,9 @@ def format_time(value: datetime) -> str:
     return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
-def read_csv(path: Path, required: tuple[str, ...]) -> list[dict[str, str]]:
+def read_csv(path: Path | InputSnapshot, required: tuple[str, ...]) -> list[dict[str, str]]:
     try:
-        with path.open("r", encoding="utf-8-sig", newline="") as source:
+        with _text_source(path, 'utf-8-sig') as source:
             reader = csv.DictReader(source)
             header = reader.fieldnames
             if header is None or len(set(header)) != len(header) or any(not name for name in header):
@@ -50,7 +103,7 @@ def read_csv(path: Path, required: tuple[str, ...]) -> list[dict[str, str]]:
         raise InputError(f"Cannot read CSV {path}: {exc}") from exc
 
 
-def read_json(path: Path) -> Any:
+def read_json(path: Path | InputSnapshot) -> Any:
     def unique_object(pairs):
         result = {}
         for key, value in pairs:
@@ -69,7 +122,7 @@ def read_json(path: Path) -> Any:
         raise InputError("JSON contains a nonfinite literal")
 
     try:
-        with path.open("r", encoding="utf-8") as source:
+        with _text_source(path, 'utf-8') as source:
             return json.load(source, object_pairs_hook=unique_object,
                              parse_float=finite_float, parse_constant=reject_constant)
     except (OSError, UnicodeError, ValueError, RecursionError) as exc:

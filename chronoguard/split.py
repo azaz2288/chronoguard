@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from .common import InputError, format_time, parse_time, read_csv
+from .common import InputError, InputSnapshot, format_time, parse_time, read_csv
 
 
 @dataclass(frozen=True)
@@ -17,7 +17,7 @@ class Event:
     end_at: datetime
 
 
-def load_events(path: Path) -> list[Event]:
+def load_events(path: Path | InputSnapshot) -> list[Event]:
     events = []
     seen = set()
     for number, row in enumerate(read_csv(path, ("sample_id", "start_at", "end_at")), start=2):

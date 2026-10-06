@@ -8,8 +8,8 @@ from pathlib import Path
 
 from .assemble import OUTPUT_FIELDS as ASSEMBLED_FIELDS, assemble
 from .audit_evaluation import audit_evaluation
-from .common import InputError, check_output, read_json, write_csv, write_json
-from .evaluate import evaluate, load_observations, sha256_file
+from .common import InputError, InputSnapshot, check_output, read_json, write_csv, write_json
+from .evaluate import evaluate, load_observations
 from .join import OUTPUT_FIELDS, audit_join, load_facts, load_samples, point_in_time_join
 from .split import audit_plan, load_events, make_plan
 
@@ -107,10 +107,11 @@ def main(argv: list[str] | None = None) -> int:
             print("OK: no train/test label leakage found")
         elif args.command == "evaluate":
             check_output(args.output, (args.events, args.plan, args.observations), args.force)
-            result = evaluate(load_events(args.events), read_json(args.plan),
-                              load_observations(args.observations, args.feature), args.feature, args.alpha,
-                              {"events": sha256_file(args.events), "plan": sha256_file(args.plan),
-                               "observations": sha256_file(args.observations)},
+            sources = {name: InputSnapshot.capture(getattr(args, name))
+                       for name in ('events', 'plan', 'observations')}
+            result = evaluate(load_events(sources['events']), read_json(sources['plan']),
+                              load_observations(sources['observations'], args.feature), args.feature, args.alpha,
+                              {name: source.sha256 for name, source in sources.items()},
                               args.bootstrap_reps, args.block_size, args.seed)
             write_json(args.output, result, force=args.force)
             print(f"Wrote {len(result['folds'])} audited folds and {result['overall']['count']} out-of-sample predictions")
@@ -121,10 +122,11 @@ def main(argv: list[str] | None = None) -> int:
             features = report["features"]
             if any(not isinstance(name, str) for name in features):
                 raise InputError("Report feature names must be strings")
-            issues = audit_evaluation(load_events(args.events), read_json(args.plan),
-                                      load_observations(args.observations, features), report,
-                                      {"events": sha256_file(args.events), "plan": sha256_file(args.plan),
-                                       "observations": sha256_file(args.observations)})
+            sources = {name: InputSnapshot.capture(getattr(args, name))
+                       for name in ('events', 'plan', 'observations')}
+            issues = audit_evaluation(load_events(sources['events']), read_json(sources['plan']),
+                                      load_observations(sources['observations'], features), report,
+                                      {name: source.sha256 for name, source in sources.items()})
             for issue in issues:
                 print(issue)
             if issues:

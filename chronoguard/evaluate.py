@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from .common import InputError, read_csv
+from .common import InputError, InputSnapshot, read_csv
 from .split import Event, audit_plan
 from .statistics import loss_comparison
 
@@ -31,7 +31,7 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
-def load_observations(path: Path, features: list[str]) -> dict[str, Observation]:
+def load_observations(path: Path | InputSnapshot, features: list[str]) -> dict[str, Observation]:
     if not features or len(set(features)) != len(features) or any(name in ("sample_id", "target") for name in features):
         raise InputError("Specify distinct numeric --feature columns other than sample_id and target")
     observations = {}

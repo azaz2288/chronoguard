@@ -27,3 +27,5 @@ jobs:
           cd "$RUNNER_TEMP"
           chronoguard --help
           python -c "import chronoguard; assert 'site-packages' in chronoguard.__file__"
+          python -I "$GITHUB_WORKSPACE/tests/test_input_snapshots.py" -v
+          python -m pip check

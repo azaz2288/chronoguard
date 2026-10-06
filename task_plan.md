@@ -5,7 +5,7 @@ Turn Chronoguard from a useful small CLI into a reproducible, leakage-resistant 
 
 ## Milestones
 1. Existing foundation: point-in-time join, purged walk-forward plans and independent join audit — complete.
-2. Reproducible experiment runner: explicit sample/target data contract, train-only transforms, baseline model, per-fold predictions and metrics, input fingerprints — baseline and audited join-to-evaluation integration complete; immutable-input enforcement remains future work.
+2. Reproducible experiment runner: explicit sample/target data contract, train-only transforms, baseline model, per-fold predictions and metrics, input fingerprints — baseline and audited join-to-evaluation integration complete; evaluation CLI now binds parsing and SHA to each immutable byte capture. Atomic multi-file capture and persisted snapshot bundles remain future work.
 3. Stronger statistical evaluation: uncertainty intervals, multiple baseline comparisons, failure-mode fixtures and larger synthetic benchmarks — in progress; paired block-bootstrap comparison implemented, more robust comparison evidence still pending.
 4. Artifact audit: independently verify predictions, fold membership, hashes, preprocessing state, reported metrics and bootstrap comparison — independent resampler implemented; local regression tests passed, cross-platform CI pending.
 5. Packaging and demonstration: installable package, realistic public dataset/example, performance characterization, cross-platform CI and release notes — in progress; wheel/console command and synthetic pipeline passed cross-platform CI, pinned real-data weather case study passed locally and in CI, initial audit performance benchmark and optimization complete; release notes pending.
@@ -16,6 +16,7 @@ Turn Chronoguard from a useful small CLI into a reproducible, leakage-resistant 
 - Publish increments to the existing public repository only after verification.
 
 ## Errors encountered
+- 2026-10-06 two input-identity regressions failed on the old CLI. First capture fix rejected stable Windows files: descriptor/path ctime differed after hard-link publication; retain descriptor-before/after ctime but exclude it from Windows cross-API comparison. Extended suite initially had one failure because adding an unknown observation ID is malformed input (exit 2), not a well-formed mismatch (exit 1); changed a numeric value for an existing ID instead, preserving strict ID validation.
 - 2026-10-06 output-safety regression first produced 9 failures / 4 errors / 1 Windows symlink skip, proving late competing CSV/JSON outputs were overwritten and ambiguous JSON accepted. New explicit force argument intentionally changed direct writer behavior; two fixture-rewrite tests initially errored, then declared force=True only for their intentional tampering. No input/output protection relaxed.
 - A first lookup for `.github/workflows/test.yml` failed because the existing workflow is named `ci.yml`; located it with `rg --files .github` and continued.
 - First local wheel smoke test ran from the repository root, so import resolved to source; reran from `work/` and confirmed the installed `site-packages` package. CI smoke step now changes to `$RUNNER_TEMP` before import.

@@ -1,5 +1,9 @@
 # Progress
 
+## 2026-10-06 input identity, v0.2.2
+- Two old-CLI mutation regressions failed as expected; replaced parse-then-reopen hashes with immutable per-file byte captures for evaluate/audit-evaluation. Added 14 synthetic methods covering post-parse mutation, capture-time growth/truncation/inplace/path replacement, strict format/Unicode, missing/nonregular/read-error inputs, POSIX FIFO rejection before open, forced-output preservation and real subprocess evaluation/audit. Windows path replacement is stat fault injection; POSIX performs actual rename-over-open. Independent model/metric/bootstrap auditor unchanged.
+- Source 57 tests: Windows 55 pass / 2 skips (FIFO unavailable and symlink permissions). Full 20-event synthetic pipeline passed; compile/diff checks passed. Isolated wheel installed outside source; site-packages/version 0.2.2 verified with -I, 14 installed boundary tests (13 pass/1 POSIX skip), actual module CLI and console help, pip check passed. CI now runs these installed boundaries on both platforms. Index scan, push and exact-SHA CI evidence follow in the workspace maintenance report. No multi-file atomicity, source authenticity, streaming or persistent snapshot claim.
+
 ## 2026-09-29
 - Foundation exists and is public with 12 passing tests and two-platform CI at commit `a2c04eb6b97394a6b1c2e01566177f537f3d16e1`.
 - User requested fewer, much deeper projects; Chronoguard selected for flagship expansion rather than opening another small repository.
